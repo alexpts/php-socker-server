@@ -1,0 +1,13 @@
+{
+    "name": "alex/socker_server",
+    "authors": [
+        {
+            "name": "alexpts",
+            "email": "alexpts@yandex.ru"
+        }
+    ],
+    "require": {
+        "workerman/workerman": "^4.0",
+        "ext-sockets": "*"
+    }
+}
