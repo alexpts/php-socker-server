@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f0fb4ada4209ec89a4703bea90e51004",
+    "content-hash": "ace891966792170082a62172920ff81c",
     "packages": [
         {
             "name": "workerman/workerman",
@@ -59,7 +59,9 @@
     "stability-flags": [],
     "prefer-stable": false,
     "prefer-lowest": false,
-    "platform": [],
+    "platform": {
+        "ext-sockets": "*"
+    },
     "platform-dev": [],
     "plugin-api-version": "1.1.0"
 }

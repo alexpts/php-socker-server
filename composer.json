@@ -8,6 +8,10 @@
     ],
     "require": {
         "workerman/workerman": "^4.0",
-        "ext-sockets": "*"
+        "ext-sockets": "*",
+        "ext-pcntl": "*",
+        "ext-posix": "*",
+        "ext-shmop": "*",
+        "ext-apcu": "*"
     }
 }

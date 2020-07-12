@@ -6,6 +6,20 @@ class Server
 	/** @var resource[]  */
 	protected array $sockets = [];
 	protected int $connectCount = 0;
+	public int $pid = 0;
+	public int $i = 0; // порядковый номер воркера для балансировки
+	public int $total = 0; // число воркеров
+	protected int $accept = 0;
+
+	/** @var resource  */
+	#protected $sync;
+
+	public function __construct()
+	{
+		#$this->sync = shmop_open('accept', 'w', 0644, 1);
+		#apcu_delete('acceptCount');
+		#apcu_add('acceptCount', 0, 3600);
+	}
 
 	public function listen(string $address): self
 	{
@@ -59,18 +73,27 @@ class Server
 		}
 
 		#$this->log('%d: read: %d', $id, strlen($buffer));
-		$message = 'OK: ' . $this->connectCount++;
-		$len = strlen($message);
-		$size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: $len\r\nContent-Type: text/plain\r\n\r\n$message");
-		#$this->log('%d: write: %d', $id, $size);
+		#$message = 'OK: ' . ($this->connectCount++);
+		#$len = strlen($message);
+		#$size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: $len\r\n\r\n$message");
+		$size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 2\r\n\r\nok");
+		#$this->log('%d - %d: write: %d', $this->i, (int)$socket, $size);
 	}
 
 	protected function readServerSocket($socket): void
 	{
-		$clientSocket = stream_socket_accept($socket, 0, $remote_address);
+		// нет балансировки коннектов, между процессами
+		$clientSocket = null;
+		set_error_handler(static function(){});
+		$clientSocket = stream_socket_accept($socket, 0, $remote_address); // concurrency process read all, but only first success
+		\restore_error_handler();
 
-		stream_set_read_buffer($clientSocket, 32);
-		stream_set_write_buffer($clientSocket, 32);
+		if ($clientSocket === false) {
+			return;
+		}
+
+		stream_set_read_buffer($clientSocket, 0);
+		stream_set_write_buffer($clientSocket, 0);
 		stream_set_blocking($clientSocket, false);
 		stream_set_timeout($clientSocket, 1);
 
