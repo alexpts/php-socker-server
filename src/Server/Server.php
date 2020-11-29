@@ -3,102 +3,87 @@ declare(strict_types=1);
 
 class Server
 {
-	/** @var resource[]  */
-	protected array $sockets = [];
-	protected int $connectCount = 0;
-	public int $pid = 0;
-	public int $i = 0; // порядковый номер воркера для балансировки
-	public int $total = 0; // число воркеров
-	protected int $accept = 0;
+    /** @var resource[] */
+    protected array $sockets = [];
+    public int $pid = 0;
 
-	/** @var resource  */
-	#protected $sync;
+    public function listen(string $address): self
+    {
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $serverSocket = stream_socket_server($address, $errno, $errMsg, $flags);
+        if (!$serverSocket) {
+            throw new RuntimeException('Can`t create socket');
+        }
 
-	public function __construct()
-	{
-		#$this->sync = shmop_open('accept', 'w', 0644, 1);
-		#apcu_delete('acceptCount');
-		#apcu_add('acceptCount', 0, 3600);
-	}
+        $socket = socket_import_stream($serverSocket);
+        socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
+        socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
+        stream_set_blocking($serverSocket, false);
 
-	public function listen(string $address): self
-	{
-		$serverSocket = stream_socket_server($address, $errno, $errmsg, STREAM_SERVER_BIND |
-			STREAM_SERVER_LISTEN);
-		if (!$serverSocket) {
-			throw new RuntimeException('Can`t create socket');
-		}
+        $this->sockets['server'] = $serverSocket;
+        return $this;
+    }
 
-		$socket = socket_import_stream($serverSocket);
-		socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
-		socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
-		stream_set_blocking($serverSocket, false);
+    protected function log(string $message, ...$params): void
+    {
+        echo sprintf($message, ...$params) . PHP_EOL;
+    }
 
-		$this->sockets['server'] = $serverSocket;
-		return $this;
-	}
+    public function runLoop(): void
+    {
+        while (true) {
+            $read = $this->sockets;
+            $write = $expect = null;
+            stream_select($read, $write, $expect, null);
 
-	protected function log(string $message, ...$params): void
-	{
-		echo sprintf($message, ...$params) . PHP_EOL;
-	}
+            foreach ($read as $name => $socket) {
+                if ($name === 'server') {
+                    $this->readServerSocket($socket);
+                    continue;
+                }
 
-	public function runLoop(): void
-	{
-		while (true) {
-			$read = $this->sockets;
-			$write = $expect = null;
-			stream_select($read, $write, $expect, null);
+                $this->readClientSocket($socket);
+            }
+        }
+    }
 
-			foreach ($read as $name => $socket) {
-				if ($name === 'server') {
-					$this->readServerSocket($socket);
-					continue;
-				}
+    protected function readClientSocket($socket): void
+    {
+        // Если сокет полностью не вычитать, то он будет помечен снова на следующей итерации как активный
+        // Фактически это приведет, что на 1 keep-alive запрос будет отправлено множество ответов по 1 на итерацию
+        $buffer = fread($socket, 1);
+        if ($buffer === false || $buffer === '') {
+            $id = (int)$socket;
+            //$this->log('%d: close socket', $id);
+            unset($this->sockets[$id]);
+            fclose($socket);
+            return;
+        }
 
-				$this->readClientSocket($socket);
-			}
-		}
-	}
+        $size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 1\r\n\r\n1");
+        #$size = @fwrite($socket, "HTTP/1.1 200 OK\\r\nContent-Length: 2\r\n\r\nok");
+    }
 
-	protected function readClientSocket($socket): void
-	{
-		$buffer = fread($socket, 1);
-		if ($buffer === false || $buffer === '') {
-			$id = (int)$socket;
-			//$this->log('%d: close socket', $id);
-			unset($this->sockets[$id]);
-			fclose($socket);
-			return;
-		}
+    protected function readServerSocket($socket): void
+    {
+        // нет балансировки коннектов, между процессами
+        $clientSocket = null;
+        set_error_handler(static function () {});
+        // concurrency process read all, but only first success
+        $clientSocket = stream_socket_accept($socket, 0, $remote_address);
+        restore_error_handler();
 
-		#$this->log('%d: read: %d', $id, strlen($buffer));
-		#$message = 'OK: ' . ($this->connectCount++);
-		#$len = strlen($message);
-		#$size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: $len\r\n\r\n$message");
-		$size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 2\r\n\r\nok");
-		#$this->log('%d - %d: write: %d', $this->i, (int)$socket, $size);
-	}
+        if ($clientSocket === false) {
+            return;
+        }
 
-	protected function readServerSocket($socket): void
-	{
-		// нет балансировки коннектов, между процессами
-		$clientSocket = null;
-		set_error_handler(static function(){});
-		$clientSocket = stream_socket_accept($socket, 0, $remote_address); // concurrency process read all, but only first success
-		\restore_error_handler();
+        stream_set_read_buffer($clientSocket, 0);
+        stream_set_write_buffer($clientSocket, 0);
+        stream_set_blocking($clientSocket, false);
+        stream_set_timeout($clientSocket, 1);
 
-		if ($clientSocket === false) {
-			return;
-		}
-
-		stream_set_read_buffer($clientSocket, 0);
-		stream_set_write_buffer($clientSocket, 0);
-		stream_set_blocking($clientSocket, false);
-		stream_set_timeout($clientSocket, 1);
-
-		$id = (int)$clientSocket;
-		$this->sockets[$id] = $clientSocket;
-		//$this->log('%d: add client: %d', (int)$socket, $id);
-	}
+        $id = (int)$clientSocket;
+        $this->sockets[$id] = $clientSocket;
+        //$this->log('%d: add connect: %d', (int)$socket, $id);
+    }
 }

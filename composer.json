@@ -12,6 +12,8 @@
         "ext-pcntl": "*",
         "ext-posix": "*",
         "ext-shmop": "*",
-        "ext-apcu": "*"
+        "ext-apcu": "*",
+        "ext-uv": "*",
+        "ext-ev": "*"
     }
 }
