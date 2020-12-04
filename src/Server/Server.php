@@ -17,7 +17,7 @@ class Server
 
         $socket = socket_import_stream($serverSocket);
         socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
-        socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
+        #socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
         stream_set_blocking($serverSocket, false);
 
         $this->sockets['server'] = $serverSocket;
