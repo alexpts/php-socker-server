@@ -1,14 +1,27 @@
 <?php
 declare(strict_types=1);
 
-class Server
+namespace PTS\SocketServer\StreamSocket;
+
+use PTS\SocketServer\ServerInterface;
+use RuntimeException;
+
+class Server implements ServerInterface
 {
     /** @var resource[] */
     protected array $sockets = [];
     public int $pid = 0;
 
-    public function listen(string $address): self
+    /**
+     * @param string $address - tcp://0.0.0.0:58380
+     * @param int $port
+     *
+     * @return $this
+     */
+    public function listen(string $address, int $port = 0): static
     {
+        $address .=  $port ? ':'. $port : '';
+
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
         $serverSocket = stream_socket_server($address, $errno, $errMsg, $flags);
         if (!$serverSocket) {
@@ -29,7 +42,7 @@ class Server
         echo sprintf($message, ...$params) . PHP_EOL;
     }
 
-    public function runLoop(): void
+    public function start(): void
     {
         while (true) {
             $read = $this->sockets;
@@ -38,16 +51,16 @@ class Server
 
             foreach ($read as $name => $socket) {
                 if ($name === 'server') {
-                    $this->readServerSocket($socket);
+                    $this->accept($socket);
                     continue;
                 }
 
-                $this->readClientSocket($socket);
+                $this->incomingMessage($socket);
             }
         }
     }
 
-    protected function readClientSocket($socket): void
+    protected function incomingMessage($socket): void
     {
         // Если сокет полностью не вычитать, то он будет помечен снова на следующей итерации как активный
         // Фактически это приведет, что на 1 keep-alive запрос будет отправлено множество ответов по 1 на итерацию
@@ -60,11 +73,10 @@ class Server
             return;
         }
 
-        $size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 1\r\n\r\n1");
-        #$size = @fwrite($socket, "HTTP/1.1 200 OK\\r\nContent-Length: 2\r\n\r\nok");
+        $size = @fwrite($socket, "HTTP/1.1 200 OK\r\nConnection: Keep-Alive\r\nContent-Length: 2\r\n\r\nok");
     }
 
-    protected function readServerSocket($socket): void
+    protected function accept($socket): void
     {
         // нет балансировки коннектов, между процессами
         $clientSocket = null;
@@ -77,13 +89,13 @@ class Server
             return;
         }
 
-        stream_set_read_buffer($clientSocket, 0);
-        stream_set_write_buffer($clientSocket, 0);
+        #socket_set_option($clientSocket, SOL_SOCKET, SO_KEEPALIVE, 1);
+        stream_set_read_buffer($clientSocket, 1024);
+        stream_set_write_buffer($clientSocket, 1024);
         stream_set_blocking($clientSocket, false);
-        stream_set_timeout($clientSocket, 1);
+        stream_set_timeout($clientSocket, 3);
 
-        $id = (int)$clientSocket;
+        $id = get_resource_id($clientSocket);
         $this->sockets[$id] = $clientSocket;
-        //$this->log('%d: add connect: %d', (int)$socket, $id);
     }
 }

@@ -1,9 +1,16 @@
 <?php
+declare(strict_types=1);
 
-require_once 'src/Server/SocketServer.php';
+use PTS\SocketServer\HandlerRequest;
+use PTS\SocketServer\Socket\ClientSocket;
+use PTS\SocketServer\Socket\Server;
 
-//$pid = pcntl_fork();
+require_once 'vendor/autoload.php';
 
-$server = new SocketServer;
+$server = new Server;
+$handler = new HandlerRequest;
+$server->setRequestHandler(static function (string $buffer, ClientSocket $socket) use ($handler) {
+    //return $handler->handle($buffer, $socket);
+});
 $server->listen('0.0.0.0', 3001);
-$server->runLoop();
+$server->start();

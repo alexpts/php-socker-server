@@ -9,11 +9,15 @@
     "require": {
         "workerman/workerman": "^4.0",
         "ext-sockets": "*",
-        "ext-pcntl": "*",
-        "ext-posix": "*",
-        "ext-shmop": "*",
-        "ext-apcu": "*",
-        "ext-uv": "*",
-        "ext-ev": "*"
+        "alexpts/php-simple-events": "^5.0",
+        "react/event-loop": "^1.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "PTS\\SocketServer\\": "src"
+        }
+    },
+    "require-dev": {
+        "eaglewu/swoole-ide-helper": "dev-master"
     }
 }
