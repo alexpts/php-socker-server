@@ -7,17 +7,19 @@ use PTS\SocketServer\ServerInterface;
 use React\EventLoop\ExtEventLoop;
 use React\EventLoop\ExtEvLoop;
 use React\EventLoop\ExtUvLoop;
+use React\EventLoop\Factory;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\StreamSelectLoop;
 use RuntimeException;
 
-class SelectLoop implements ServerInterface
+class EventLoopServer implements ServerInterface
 {
     protected LoopInterface $loop;
 
     public function __construct()
     {
-        $this->loop = new StreamSelectLoop;
+        $this->loop = Factory::create();
+        #$this->loop = new StreamSelectLoop;
         #$this->loop = new ExtEventLoop;
         #$this->loop = new ExtUvLoop;
         #$this->loop = new ExtEvLoop;
@@ -37,8 +39,9 @@ class SelectLoop implements ServerInterface
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
         $context = stream_context_create([
             'socket' => [
-                'backlog' => 10000,
+                'backlog' => 1024,
                 'so_reuseport' => true,
+                #'tcp_nodelay' => true,
             ]
         ]);
         $serverSocket = stream_socket_server($address, $errno, $errMsg, $flags, $context);
@@ -46,9 +49,6 @@ class SelectLoop implements ServerInterface
             throw new RuntimeException('Can`t create socket');
         }
 
-        $socket = socket_import_stream($serverSocket);
-        socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
-        socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
         stream_set_blocking($serverSocket, false);
 
         $this->loop->addReadStream($serverSocket, [$this, 'accept']);
@@ -72,26 +72,26 @@ class SelectLoop implements ServerInterface
         }
 
         #socket_set_option($clientSocket, SOL_SOCKET, SO_KEEPALIVE, 1);
-        stream_set_read_buffer($clientSocket, 65000);
-        stream_set_write_buffer($clientSocket, 65000);
-        stream_set_blocking($clientSocket, false);
-        #stream_set_timeout($clientSocket, 3);
+        #stream_set_read_buffer($clientSocket, 1);
+        #stream_set_write_buffer($clientSocket, 1);
+        #stream_set_blocking($clientSocket, false);
+        #stream_set_timeout($clientSocket, 10);
 
         $this->loop->addReadStream($clientSocket, [$this, 'onIncomingMessage']);
     }
 
-    public function onIncomingMessage($clientSocket)
+    public function onIncomingMessage($clientSocket): void
     {
         // Если сокет полностью не вычитать, то он будет помечен снова на следующей итерации как активный
         // Фактически это приведет, что на 1 keep-alive запрос будет отправлено множество ответов по 1 на итерацию
         $buffer = fread($clientSocket, 1);
         if ($buffer === false || $buffer === '') {
             $this->loop->removeReadStream($clientSocket);
-            fclose($clientSocket);
+            @fclose($clientSocket);
             return;
         }
 
-        @fwrite($clientSocket, "HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n1");
+        @fwrite($clientSocket, "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Length: 1\r\n\r\n1");
     }
 
     public function start(): void

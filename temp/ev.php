@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 use PTS\SocketServer\Ev\Server;
 
-require_once 'vendor/autoload.php';
+require_once './../vendor/autoload.php';
 $loop = new EvLoop;
 
 $server = new Server;

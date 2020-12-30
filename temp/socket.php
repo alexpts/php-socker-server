@@ -5,7 +5,7 @@ use PTS\SocketServer\HandlerRequest;
 use PTS\SocketServer\Socket\ClientSocket;
 use PTS\SocketServer\Socket\Server;
 
-require_once 'vendor/autoload.php';
+require_once '../vendor/autoload.php';
 
 $server = new Server;
 $handler = new HandlerRequest;
