@@ -4,6 +4,9 @@ namespace PTS\SocketServer\EventLoop;
 
 use Exception;
 use PTS\SocketServer\ServerInterface;
+use React\EventLoop\ExtEventLoop;
+use React\EventLoop\ExtEvLoop;
+use React\EventLoop\ExtUvLoop;
 use React\EventLoop\LoopInterface;
 use React\EventLoop\StreamSelectLoop;
 use RuntimeException;
@@ -15,6 +18,9 @@ class SelectLoop implements ServerInterface
     public function __construct()
     {
         $this->loop = new StreamSelectLoop;
+        #$this->loop = new ExtEventLoop;
+        #$this->loop = new ExtUvLoop;
+        #$this->loop = new ExtEvLoop;
     }
 
     /**
@@ -24,19 +30,25 @@ class SelectLoop implements ServerInterface
      * @return $this
      * @throws Exception
      */
-    public function listen(string $address, int $port = 0): static
+    public function listen(string $address, int $port = 0): self
     {
         $address .=  $port ? ':'. $port : '';
 
         $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
-        $serverSocket = stream_socket_server($address, $errno, $errMsg, $flags);
+        $context = stream_context_create([
+            'socket' => [
+                'backlog' => 10000,
+                'so_reuseport' => true,
+            ]
+        ]);
+        $serverSocket = stream_socket_server($address, $errno, $errMsg, $flags, $context);
         if (!$serverSocket) {
             throw new RuntimeException('Can`t create socket');
         }
 
         $socket = socket_import_stream($serverSocket);
         socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
-        #socket_set_option($serverSocket, SOL_TCP, TCP_NODELAY, 1);
+        socket_set_option($socket, SOL_TCP, TCP_NODELAY, 1);
         stream_set_blocking($serverSocket, false);
 
         $this->loop->addReadStream($serverSocket, [$this, 'accept']);
@@ -47,20 +59,23 @@ class SelectLoop implements ServerInterface
     {
         // нет балансировки коннектов, между процессами
         $clientSocket = null;
-        set_error_handler(static function () {});
+        set_error_handler(static function (...$args) {
+            echo 'can`t accept: ' . print_r($args, 1) . PHP_EOL;
+        });
         // concurrency process read all, but only first success
         $clientSocket = stream_socket_accept($serverSocket, 0, $remote_address);
         restore_error_handler();
 
         if ($clientSocket === false) {
+            echo 'can`t accept';
             return;
         }
 
         #socket_set_option($clientSocket, SOL_SOCKET, SO_KEEPALIVE, 1);
-        stream_set_read_buffer($clientSocket, 1024);
-        stream_set_write_buffer($clientSocket, 1024);
+        stream_set_read_buffer($clientSocket, 65000);
+        stream_set_write_buffer($clientSocket, 65000);
         stream_set_blocking($clientSocket, false);
-        stream_set_timeout($clientSocket, 3);
+        #stream_set_timeout($clientSocket, 3);
 
         $this->loop->addReadStream($clientSocket, [$this, 'onIncomingMessage']);
     }
@@ -76,7 +91,7 @@ class SelectLoop implements ServerInterface
             return;
         }
 
-        $size = @fwrite($clientSocket, "HTTP/1.1 200 OK\r\nConnection: Keep-Alive\r\nContent-Length: 1\r\n\r\n1");
+        @fwrite($clientSocket, "HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n1");
     }
 
     public function start(): void

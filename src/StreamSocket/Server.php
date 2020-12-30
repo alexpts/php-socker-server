@@ -89,7 +89,6 @@ class Server implements ServerInterface
             return;
         }
 
-        #socket_set_option($clientSocket, SOL_SOCKET, SO_KEEPALIVE, 1);
         stream_set_read_buffer($clientSocket, 1024);
         stream_set_write_buffer($clientSocket, 1024);
         stream_set_blocking($clientSocket, false);

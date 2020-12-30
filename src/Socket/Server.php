@@ -10,7 +10,6 @@ use Socket;
 
 class Server implements ServerInterface
 {
-
     use EventEmitterTrait;
 
     # https://github.com/freebsd/freebsd/blob/master/sys/sys/socket.h
